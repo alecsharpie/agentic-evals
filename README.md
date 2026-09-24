@@ -128,6 +128,10 @@ npm test            # 21 tests, incl. an ideal agent scoring 90 on all 24 tasks
 
 `analyse.ts` imports the same `stats.ts` the page uses, so the terminal figures and the charts cannot drift apart. Scoring is separate from running, so a rubric fix never needs the models re-run.
 
+## License
+
+MIT. The models it downloads are separately licensed by their publishers (Qwen2.5 and SmolLM2 under Apache-2.0, Llama 3.2 under the Llama 3.2 Community License).
+
 ## Long runs
 
 A background browser tab is throttled and may be suspended, which stalled part 3 midway; long headless runs can also lose the WebGPU context. `scripts/run-headless.mjs` drives the same Experiment page in headless Chromium with WebGPU, resumes from the recorded run, retries if the renderer crashes, and saves the result. `scripts/check-determinism.mjs` replays recorded runs and compares every token; 24 of 24 Qwen2.5 1.5B baseline runs reproduced exactly across browser builds, which is what licenses the paired comparisons.
