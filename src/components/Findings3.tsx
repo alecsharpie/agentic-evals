@@ -45,7 +45,8 @@ const FINDINGS: { title: string; body: React.ReactNode }[] = [
     body: (
       <>
         Showing the full <code>get_order → get_product → calculate</code> path unlocked the task that had resisted everything: “total value of order
-        A1004” went from 0 of 80 attempts to 6 of 8, and “unit price of the item in order A1002”, a prefix of the same path, from 0 to 3. That confirms
+        A1004” went from 0 of 80 attempts to 6 of 8, and “unit price of the item in order A1002”, a prefix of the same path, from 0 to 3. (Part 5 qualifies
+        those zeroes: under sampling both are solved occasionally, so greedy decoding rather than the models was the binding constraint.) That confirms
         part 2's reading that these models replay demonstrations and do not compose them. But replay has no sense of applicability. Asked what a desk lamp
         costs, a question with no order in it, 13 of 24 runs now opened with <code>get_order</code>, against 1 of 23 at baseline. They looked up order
         B3000, which exists only in the example, or A1234, the placeholder in the tool description. “How much do 3 desk lamps cost?” fell from 5 of 8 to 0

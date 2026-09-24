@@ -167,3 +167,64 @@ export function taskSubset(results: ExperimentResults, tasks: Task[]): Experimen
   const inSet = new Set(tasks.map((t) => t.id));
   return { ...results, runs: results.runs.filter((r) => inSet.has(r.taskId)) };
 }
+
+// ------------------------------------------------------------ part 5: sampling variance
+
+export interface VarianceCell {
+  modelId: string;
+  format: Format;
+  /** Successes out of the task count, for the single greedy decoding. */
+  greedy: number | null;
+  /** Successes out of the task count, one entry per sampled trial. */
+  samples: number[];
+  tasks: number;
+  mean: number;
+  min: number;
+  max: number;
+  sd: number;
+}
+
+/** Per model x format: the greedy point, and the spread of the sampled trials around it. */
+export function varianceStats(results: ExperimentResults, tasks: Task[], temperature: number): VarianceCell[] {
+  const inSet = new Set(tasks.map((t) => t.id));
+  const base = results.runs.filter((r) => (r.variant ?? "base") === "base" && inSet.has(r.taskId));
+  const out: VarianceCell[] = [];
+  for (const model of MODELS) {
+    for (const format of FORMATS) {
+      const mine = base.filter((r) => r.modelId === model.id && r.format === format);
+      const sampled = mine.filter((r) => r.temperature === temperature);
+      if (!sampled.length) continue;
+      const trials = [...new Set(sampled.map((r) => r.trial))].sort((a, b) => a - b);
+      const samples = trials.map((t) => sampled.filter((r) => r.trial === t && r.score.success).length);
+      const greedyRuns = mine.filter((r) => (r.temperature ?? 0) === 0);
+      const m = samples.reduce((a, b) => a + b, 0) / samples.length;
+      out.push({
+        modelId: model.id,
+        format,
+        greedy: greedyRuns.length ? greedyRuns.filter((r) => r.score.success).length : null,
+        samples,
+        tasks: tasks.length,
+        mean: m,
+        min: Math.min(...samples),
+        max: Math.max(...samples),
+        sd: Math.sqrt(samples.reduce((a, b) => a + (b - m) ** 2, 0) / Math.max(1, samples.length - 1)),
+      });
+    }
+  }
+  return out;
+}
+
+/** How many of the sampled trials solved each (model, format, task) cell. */
+export function solveCounts(results: ExperimentResults, tasks: Task[], temperature: number) {
+  const inSet = new Set(tasks.map((t) => t.id));
+  const runs = results.runs.filter((r) => (r.variant ?? "base") === "base" && r.temperature === temperature && inSet.has(r.taskId));
+  const cells = new Map<string, { modelId: string; format: Format; taskId: string; solved: number; of: number }>();
+  for (const r of runs) {
+    const k = `${r.modelId}|${r.format}|${r.taskId}`;
+    const c = cells.get(k) ?? { modelId: r.modelId, format: r.format, taskId: r.taskId, solved: 0, of: 0 };
+    c.solved += r.score.success ? 1 : 0;
+    c.of++;
+    cells.set(k, c);
+  }
+  return [...cells.values()];
+}

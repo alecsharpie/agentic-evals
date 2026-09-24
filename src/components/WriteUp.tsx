@@ -10,13 +10,28 @@ import { Findings } from "./Findings.tsx";
 import { Findings2 } from "./Findings2.tsx";
 import { Findings3, Predictions } from "./Findings3.tsx";
 import { Findings4, VERDICTS_V2 } from "./Findings4.tsx";
+import { Findings5, VERDICTS_VAR } from "./Findings5.tsx";
+import { BimodalFigure, PredictionsVar, SAMPLED_TEMP, SpreadFigure, StabilityFigure, hasPart5 } from "./Part5.tsx";
 import { LadderFigure, PredictionsV2, ReplicationFigure, hasPart4 } from "./Part4.tsx";
 import { taskSubset } from "../lib/stats.ts";
 import { TASKS_V2 } from "../lib/tasks.ts";
 import { FlipsFigure, InterventionGrid, PART2, PART3, PrematureFigure, TaskByVariant, VariantMatrix, VariantOutcomes, hasPart } from "./Part2.tsx";
 import { CriteriaFigure, Headline, JudgeFigure, OutcomeFigure, SpeedFigure, SuccessFigure, TaskMatrix, TierFigure, atTemperature, baselineOnly, useStats } from "./ResultsViz.tsx";
 
-const H2 = ({ n, children }: { n: number; children: React.ReactNode }) => (
+type SectionKey = "setup" | "format" | "rubric" | "results" | "traces" | "judge" | "findings" | "p2" | "p2f" | "p3" | "p3f" | "p4" | "p4f" | "p5" | "p5f" | "limits" | "repro";
+
+/**
+ * Section numbers are derived from which parts are present, so omitting a part can
+ * never leave a gap or a duplicate. Computed as pure data, not by a render-time
+ * counter: H2 renders twice under StrictMode, and a counter would double-count.
+ */
+function numbering(present: Partial<Record<SectionKey, boolean>>) {
+  const order: SectionKey[] = ["setup", "format", "rubric", "results", "traces", "judge", "findings", "p2", "p2f", "p3", "p3f", "p4", "p4f", "p5", "p5f", "limits", "repro"];
+  const shown = order.filter((k) => present[k] ?? true);
+  return (key: SectionKey) => shown.indexOf(key) + 1;
+}
+
+const Section = ({ n, children }: { n: number; children: React.ReactNode }) => (
   <h2>
     <span className="num">{n}</span>
     {children}
@@ -93,11 +108,13 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
   const part2 = all !== null && hasPart(all, 2);
   const part3 = all !== null && hasPart(all, 3);
   const part4 = all !== null && hasPart4(all);
+  const part5 = raw !== null && hasPart5(raw);
   const fresh = all ? taskSubset(all, TASKS_V2) : null;
   const runsIn = (part: 2 | 3) => all?.runs.filter((r) => VARIANTS.some((v) => v.part === part && v.id === r.variant)).length ?? 0;
-  // Section numbers shift as parts are added.
-  const tail = 8 + (part2 ? 2 : 0) + (part3 ? 2 : 0) + (part4 ? 2 : 0);
   const stats = useStats(results ?? { meta: {} as ExperimentResults["meta"], runs: [] });
+  // Section numbers shift as parts are added.
+  const hasResults = results !== null && stats.length > 0;
+  const n = numbering({ results: hasResults, traces: hasResults, judge: hasResults, findings: hasResults, p2: part2, p2f: part2, p3: part3, p3f: part3, p4: part4, p4f: part4, p5: part5, p5f: part5 });
   const tiers = Object.keys(TIER_LABEL) as Tier[];
   const example = { tool: "track_shipment", args: { tracking_id: "TRK-501" } };
   const thought = "The order has tracking ID TRK-501. I will track it.";
@@ -127,7 +144,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
       {results ? <Headline results={results} /> : <div className="notice">No recorded run found yet. Open the Experiment tab, run it, and save the result to populate the charts below.</div>}
 
       <div className="article">
-        <H2 n={1}>The setup</H2>
+        <Section n={n("setup")}>The setup</Section>
         <p>
           The agent plays a support rep for an online shop. The <strong>model is real</strong>: weights are downloaded once and executed on your GPU through
           WebGPU (via WebLLM), with no server and no API key. The <strong>tools are mocks</strong>: plain functions over a tiny fixed dataset of five orders,
@@ -160,7 +177,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
           that appears in no task. Decoding is greedy (temperature 0), so each configuration is deterministic and runs once per task.
         </p>
 
-        <H2 n={2}>The variable: how the model writes a step</H2>
+        <Section n={n("format")}>The variable: how the model writes a step</Section>
         <p>
           A ReAct agent has to emit something a program can execute. That is the first thing to break in a small model, so it is the variable tested here.
           Both formats carry the same three fields and the same prompt otherwise.
@@ -190,7 +207,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
       </div>
 
       <div className="article">
-        <H2 n={3}>The rubric</H2>
+        <Section n={n("rubric")}>The rubric</Section>
         <p>
           Each run is scored out of 100. Five criteria are <strong>deterministic code checks</strong> over the trace and the answer, which is possible only
           because the world is mocked. The sixth has no mechanical test, so it goes to an <strong>LLM judge</strong>: after all agents finish, one fixed model (
@@ -209,7 +226,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
       {results && stats.length > 0 && (
         <>
           <div className="article">
-            <H2 n={4}>Results</H2>
+            <Section n={n("results")}>Results</Section>
             <p>
               Part 1 is {results.runs.length} runs: {stats.length / 2} models × 2 formats × {TASKS.length} tasks, on {results.meta.gpu || "WebGPU"}. With {TASKS.length}{" "}
               tasks per configuration one task is worth {Math.round(100 / TASKS.length)} percentage points, so read the intervals, not just the bars.
@@ -221,14 +238,14 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
           <OutcomeFigure stats={stats} />
 
           <div className="article">
-            <H2 n={5}>Read the traces</H2>
+            <Section n={n("traces")}>Read the traces</Section>
             <p>Aggregates hide the texture. Every cell below opens the full trace: what the model thought, what it called, what the mock returned, and how each rubric line was scored.</p>
           </div>
           <TaskMatrix results={results} />
           <SpeedFigure stats={stats} />
 
           <div className="article">
-            <H2 n={6}>Can a small model grade the answers?</H2>
+            <Section n={n("judge")}>Can a small model grade the answers?</Section>
             <p>
               Because ground truth is known, the judge itself can be evaluated. It saw the question, the reference answer and the agent's answer, and returned
               a yes/no verdict under the same grammar-constrained JSON.
@@ -237,7 +254,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
           <JudgeFigure results={results} />
 
           <div className="article">
-            <H2 n={7}>Findings</H2>
+            <Section n={n("findings")}>Findings</Section>
             <Findings results={results} />
           </div>
         </>
@@ -246,7 +263,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
       {all && part2 && (
         <>
           <div className="article">
-            <H2 n={8}>Part 2: three fixes, tested</H2>
+            <Section n={n("p2")}>Part 2: three fixes, tested</Section>
             <p>
               Part 1 ended with three diagnoses, and each one implies a cheap fix to the harness around the model. Part 2 runs them. Nothing about the models,
               tasks or rubric changes; {runsIn(2)} further runs cover every combination below.
@@ -273,7 +290,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
           <VariantMatrix results={all} ids={PART2} />
 
           <div className="article">
-            <H2 n={9}>What part 2 found</H2>
+            <Section n={n("p2f")}>What part 2 found</Section>
             <Findings2 />
           </div>
         </>
@@ -282,7 +299,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
       {all && part3 && (
         <>
           <div className="article">
-            <H2 n={part2 ? 10 : 8}>Part 3: why did the second example hurt?</H2>
+            <Section n={n("p3")}>Part 3: why did the second example hurt?</Section>
             <p>
               Part 2's strangest result was that adding a relevant worked example made the agents worse. Three explanations were on the table: a short
               example teaches early stopping, the last example dominates whatever came before, or any extra context is a burden. They predict different
@@ -315,7 +332,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
           <VariantMatrix results={all} ids={PART3} />
 
           <div className="article">
-            <H2 n={part2 ? 11 : 9}>What part 3 found</H2>
+            <Section n={n("p3f")}>What part 3 found</Section>
             <Findings3 />
           </div>
         </>
@@ -324,7 +341,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
       {all && fresh && part4 && (
         <>
           <div className="article">
-            <H2 n={tail - 2}>Part 4: does any of it replicate?</H2>
+            <Section n={n("p4")}>Part 4: does any of it replicate?</Section>
             <p>
               Everything so far rests on the same 12 questions, and parts 2 and 3 were designed by staring at their failures. Part 4 writes 12 new questions,
               on three new orders, with shapes no worked example demonstrates: a shipment asked about by tracking number directly, two product lookups that
@@ -340,14 +357,36 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
           <PrematureFigure results={fresh} ids={PART3} />
           <VariantMatrix results={fresh} ids={PART3} tasks={TASKS_V2} />
           <div className="article">
-            <H2 n={tail - 1}>What part 4 found</H2>
+            <Section n={n("p4f")}>What part 4 found</Section>
             <Findings4 />
           </div>
         </>
       )}
 
+      {raw && part5 && (
+        <>
+          <div className="article">
+            <Section n={n("p5")}>Part 5: how much did one decoding decide?</Section>
+            <p>
+              Every number in parts 1 to 4 comes from greedy decoding: exactly one run per cell, reproducible to the token. That makes the paired
+              comparisons exact, and it leaves one question open. Greedy is a single sample from the space of things the model might have said, so how much
+              of the structure in those four parts would survive if it had sampled differently? Part 5 reruns the baseline harness on the original twelve
+              tasks at temperature {SAMPLED_TEMP}, five times per cell, and compares the spread with the effects the earlier parts report.
+            </p>
+          </div>
+          <PredictionsVar verdicts={VERDICTS_VAR} />
+          <SpreadFigure results={raw} />
+          <BimodalFigure results={raw} />
+          <StabilityFigure results={raw} />
+          <div className="article">
+            <Section n={n("p5f")}>What part 5 found</Section>
+            <Findings5 />
+          </div>
+        </>
+      )}
+
       <div className="article">
-        <H2 n={results ? tail : 4}>Limitations</H2>
+        <Section n={n("limits")}>Limitations</Section>
         <ul>
           <li>
             <strong>Small n.</strong> {TASKS.length} tasks per configuration, one greedy run each. Differences of one or two tasks are inside the noise; the
@@ -379,7 +418,7 @@ export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | n
           </li>
         </ul>
 
-        <H2 n={results ? tail + 1 : 5}>Reproduce it</H2>
+        <Section n={n("repro")}>Reproduce it</Section>
         <p>
           Everything on this page runs client-side. The Experiment tab re-runs the full grid in your browser and draws the same charts from your results. The
           agent loop, mock tools, rubric and judge are each a single short file under <code>src/lib</code>, and <code>npm test</code> drives the loop with a

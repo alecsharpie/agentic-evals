@@ -2,6 +2,7 @@
 
 import type { ExperimentResults } from "../lib/types.ts";
 import { TASKS_V2 } from "../lib/tasks.ts";
+import { BimodalFigure, SpreadFigure, StabilityFigure, hasPart5 } from "./Part5.tsx";
 import { taskSubset } from "../lib/stats.ts";
 import { FlipsFigure, InterventionGrid, PART2, PART3, PrematureFigure, TaskByVariant, VariantMatrix, VariantOutcomes, hasPart } from "./Part2.tsx";
 import { TASKS } from "../lib/tasks.ts";
@@ -44,6 +45,14 @@ export function AllFigures({ results: raw }: { results: ExperimentResults }) {
           )
         );
       })}
+      {hasPart5(raw) && (
+        <div>
+          <h3 style={{ margin: "40px 0 0", fontSize: 17 }}>Part 5: sampling variance</h3>
+          <SpreadFigure results={raw} />
+          <BimodalFigure results={raw} />
+          <StabilityFigure results={raw} />
+        </div>
+      )}
       {fresh.runs.length > 0 && (
         <div>
           <h3 style={{ margin: "40px 0 0", fontSize: 17 }}>Part 4: fresh task set</h3>

@@ -29,6 +29,11 @@ async function attempt() {
 
     // Optional: TASKSET="Fresh tasks (part 4)" picks a task set; VARIANTS="Baseline,Two examples" picks harnesses.
     if (process.env.TASKSET) await page.locator(".exp-grid aside .segmented button", { hasText: process.env.TASKSET }).click();
+    for (const [env, id] of [["TRIALS", "#trials"], ["TEMP", "#temp"]]) {
+      if (!process.env[env]) continue;
+      await page.locator(id).fill(process.env[env]);
+      await page.locator(id).dispatchEvent("change");
+    }
     if (process.env.VARIANTS) {
       const wanted = process.env.VARIANTS.split(",").map((s) => s.trim());
       for (const box of await page.locator(".exp-grid aside label.check").all()) {

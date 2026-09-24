@@ -11,7 +11,8 @@ const FINDINGS: { title: string; body: React.ReactNode }[] = [
       <>
         SmolLM2 360M solved 2 of 12 tasks in either format and ended 15 of its 24 runs without an answer. Qwen2.5 0.5B, barely larger, solved 7 of 12, and
         it did so in about 2.5 seconds per task at roughly 45 tokens per second. Success then climbs slowly: 8 of 12 for Llama 3.2 1B and 9 of 12 for Qwen2.5
-        1.5B, which costs about two and a half times the latency of the 0.5B model for two more tasks. No configuration's interval clears 95%.
+        1.5B, which costs about two and a half times the latency of the 0.5B model for two more tasks. No configuration's interval clears 95%. <strong>Part 5 adds a caveat to every figure in part 1:</strong> these are greedy numbers, and sampling the same
+        harness at temperature 0.7 scores about 15 points of 96 lower.
       </>
     ),
   },
@@ -33,7 +34,8 @@ const FINDINGS: { title: string; body: React.ReactNode }[] = [
       <>
         Of 29 runs that never answered, 23 were stuck re-issuing calls they had already made, with the same arguments and the same observation coming back
         each time. Qwen2.5 0.5B had the order status in hand after one call and asked for it seven more times. The models can pick a tool and fill its
-        argument; what they lack is the judgement that the observation in front of them already answers the question. The obvious harness-level fix is to refuse a repeated call with a nudge to finish. Part 2 tests exactly that, and it does not work.
+        argument; what they lack is the judgement that the observation in front of them already answers the question. Part 5 shows temperature does break
+        some of these loops, and that it converts them into wrong answers rather than right ones. The obvious harness-level fix is to refuse a repeated call with a nudge to finish. Part 2 tests exactly that, and it does not work.
       </>
     ),
   },

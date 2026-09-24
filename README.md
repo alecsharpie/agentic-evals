@@ -116,6 +116,20 @@ Other findings:
 - Asked about a shipment by its tracking number, 6 of 8 baseline runs still started with `get_order`, the first call of the example. None started with `track_shipment`.
 - Auditing found a flaw in one of my own new tasks: "is it still in Chicago?" names the answer in the question, so 8 of 23 runs passed it without ever checking. Binary success could not tell them apart; the weighted rubric could (80 vs 90 average). A second, clearer bug was fixed with a test and re-scored.
 
+## Part 5: how much did one decoding decide?
+
+Parts 1-4 are all greedy: one run per cell, reproducible to the token. Part 5 reruns the baseline harness on the original 12 tasks at temperature 0.7, five times per cell (480 runs), to size the noise around that single choice. Four predictions were committed first; two held, two did not.
+
+| | Greedy | Sampled (5 trials) |
+| --- | --- | --- |
+| Baseline, all models & formats | 49/96 | 33-38, mean 34.8, SD 2.5 |
+
+- **Every number in parts 1-4 is a best case.** Greedy beats the sampled mean by ~15 points of 96, and sits at or above it in 7 of 8 configurations.
+- **The spread sorts the earlier effects into two groups.** Against SD 2.5: removing the chain example (-25, 10 SD), the short second example (-11, 4.4 SD) and the example-order effect (+12, 4.8 SD) are far outside the noise. The loop guard (0 SD), reversed-vs-baseline (+1, 0.4 SD) and three-hop (-7, 2.8 SD) are not.
+- **Temperature breaks the loops the part-2 guard could not, and it still doesn't help.** Runs hitting the step limit fall 26% → 22% and unanswered runs 30% → 24%, but wrong answers rise 8% → 22% and fabrications 10% → 19%, with correct answers down 51% → 36%. Silence becomes confabulation, not correctness.
+- **"Zero for eighty" was about greedy decoding, not the models.** The two tasks no greedy harness ever solved are solved under sampling: the unit price 5 times in 40, the order total twice. Both order-total successes did the arithmetic mentally rather than calling the calculator.
+- **61% of cells came out the same way all five times**, short of the two thirds predicted; 39% genuinely varied. The size ladder is unchanged under sampling, which makes it the one finding that has now survived both a fresh task set and resampling.
+
 ## Reproducing the numbers
 
 `public/results/recorded.json` (5 MB) holds all 1248 runs with full traces: every model turn's raw output, the parsed tool call, the mock's observation, timings and token counts, plus the final answer, judge verdicts with reasoning, and per-criterion scores. Every figure and every number in the write-up derives from this one file.

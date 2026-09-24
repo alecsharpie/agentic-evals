@@ -4,7 +4,7 @@
 //   node --experimental-strip-types scripts/analyse.ts [results.json]
 import { readFileSync } from "node:fs";
 import type { ExperimentResults, ScoredRun, VariantId } from "../src/lib/types.ts";
-import { flips, pct, signTest, wilson } from "../src/lib/stats.ts";
+import { flips, pct, signTest, solveCounts, varianceStats, wilson } from "../src/lib/stats.ts";
 import { TASKS, TASKS_V2, taskById } from "../src/lib/tasks.ts";
 import { MODELS, modelLabel } from "../src/lib/models.ts";
 import { VARIANTS, variantLabel } from "../src/lib/variants.ts";
@@ -140,3 +140,34 @@ console.log(`  Tasks solved by nobody, in any harness: ${nobody.map((t) => `${t.
 console.log(`  Best single harness ${Math.max(...VARIANTS.map((v) => solved(of(setOf("v1"), v.id))))}/96 vs per-task oracle ${TASKS.reduce((n, t) => n + Math.max(...VARIANTS.map((v) => solved(greedy.filter((r) => r.taskId === t.id && r.variant === v.id)))), 0)}/96 (original tasks)`);
 console.log(`  (the oracle picks the best harness per task on the same runs it scores, so it is a ceiling, not an estimate)`);
 console.log(`\nTasks referenced above: ${[...TASKS, ...TASKS_V2].length} total; taskById resolves ${taskById("b-still") ? "both sets" : "v1 only"}.`);
+
+// ── part 5: sampling variance ─────────────────────────────────────────────────
+if (sampled.length) {
+  const temp = sampled[0].temperature;
+  h(`Part 5: greedy vs ${sampled.filter((r) => r.taskId === TASKS[0].id && r.modelId === MODELS[0].id && r.format === "text").length} samples at temperature ${temp}`);
+  const cells = varianceStats(all, TASKS, temp);
+  for (const c of cells) {
+    console.log(`  ${modelLabel(c.modelId).padEnd(14)} ${c.format.padEnd(5)} greedy ${String(c.greedy).padStart(2)}/${c.tasks}   sampled [${c.samples.join(", ")}] mean ${c.mean.toFixed(1)} sd ${c.sd.toFixed(2)}`);
+  }
+  const trials = [...new Set(sampled.map((r) => r.trial))].sort();
+  const base = sampled.filter((r) => r.variant === "base" && V1.has(r.taskId));
+  const totals = trials.map((t) => base.filter((r) => r.trial === t && r.score.success).length);
+  const mean = totals.reduce((a, b) => a + b, 0) / totals.length;
+  const sd = Math.sqrt(totals.reduce((a, b) => a + (b - mean) ** 2, 0) / (totals.length - 1));
+  const greedyTotal = solved(of(setOf("v1"), "base"));
+  console.log(`  aggregate of 96: greedy ${greedyTotal}, sampled [${totals.join(", ")}] mean ${mean.toFixed(1)} sd ${sd.toFixed(2)}`);
+  console.log(`  effect sizes from parts 2-3, in units of that sd:`);
+  for (const [label, effect] of [["calc-only", -25], ["two examples", -11], ["chain-last vs calc-last", 12], ["three-hop", -7], ["reversed", 1], ["loop guard", 0]] as const) {
+    console.log(`    ${label.padEnd(24)} ${String(effect).padStart(3)} → ${(Math.abs(effect) / sd).toFixed(1)} sd`);
+  }
+  const counts = solveCounts(all, TASKS, temp);
+  const n = counts[0]?.of ?? 0;
+  const decided = counts.filter((c) => c.solved === 0 || c.solved === n).length;
+  console.log(`  cells decided (0 or ${n} of ${n}): ${decided} of ${counts.length} (${pct(decided / counts.length)})`);
+  const bucket = Array.from({ length: n + 1 }, (_, k) => `${k}:${counts.filter((c) => c.solved === k).length}`);
+  console.log(`  distribution of times solved: ${bucket.join("  ")}`);
+  for (const [label, rs] of [["greedy", of(setOf("v1"), "base")], ["sampled", base]] as const) {
+    const share = (f: (r: ScoredRun) => boolean) => pct(rs.filter(f).length / rs.length);
+    console.log(`  ${label.padEnd(8)} correct ${share((r) => r.score.outcome === "correct")}  wrong ${share((r) => r.score.outcome === "wrong")}  fabricated ${share((r) => r.score.outcome === "fabricated")}  no answer ${share((r) => r.answer === null)}  hit step limit ${share((r) => r.stopReason === "max_steps")}`);
+  }
+}
