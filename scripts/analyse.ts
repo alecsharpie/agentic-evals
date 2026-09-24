@@ -1,0 +1,140 @@
+// Reproduces every number quoted in the write-up, from the recorded run.
+// It imports the same stats/rubric/task code the app uses, so there is no second
+// implementation to drift from the page.
+//   node --experimental-strip-types scripts/analyse.ts [results.json]
+import { readFileSync } from "node:fs";
+import type { ExperimentResults, ScoredRun, VariantId } from "../src/lib/types.ts";
+import { flips, pct, signTest, wilson } from "../src/lib/stats.ts";
+import { TASKS, TASKS_V2, taskById } from "../src/lib/tasks.ts";
+import { MODELS, modelLabel } from "../src/lib/models.ts";
+import { VARIANTS, variantLabel } from "../src/lib/variants.ts";
+
+const file = process.argv[2] ?? "public/results/recorded.json";
+const all = JSON.parse(readFileSync(file, "utf8")) as ExperimentResults;
+for (const r of all.runs) r.variant ??= "base";
+
+const V1 = new Set(TASKS.map((t) => t.id));
+const V2 = new Set(TASKS_V2.map((t) => t.id));
+const setOf = (name: "v1" | "v2") => all.runs.filter((r) => (name === "v1" ? V1 : V2).has(r.taskId));
+const solved = (rs: ScoredRun[]) => rs.filter((r) => r.score.success).length;
+const of = (rs: ScoredRun[], v: VariantId) => rs.filter((r) => r.variant === v);
+const h = (s: string) => console.log(`\n── ${s} ${"─".repeat(Math.max(0, 66 - s.length))}`);
+const p = (x: number) => (x < 0.001 ? "<0.001" : x.toFixed(3));
+
+console.log(`${file}: ${all.runs.length} runs, ${new Set(all.runs.map((r) => r.taskId)).size} tasks, ${new Set(all.runs.map((r) => r.variant)).size} harnesses`);
+console.log(`judged ${all.runs.filter((r) => r.judge).length} of ${all.runs.filter((r) => r.answer !== null).length} answered · ${all.meta.gpu} · temperature ${all.meta.temperature}`);
+
+// ── part 1 ────────────────────────────────────────────────────────────────────
+h("Part 1: models x step format (original tasks, baseline harness)");
+for (const m of MODELS) {
+  const row = (["text", "json"] as const).map((f) => {
+    const rs = of(setOf("v1"), "base").filter((r) => r.modelId === m.id && r.format === f);
+    const ci = wilson(solved(rs), rs.length);
+    return `${f} ${String(solved(rs)).padStart(2)}/${rs.length} [${pct(ci[0])}-${pct(ci[1])}]`;
+  });
+  console.log(`  ${m.label.padEnd(14)} ${row.join("   ")}`);
+}
+const judged = all.runs.filter((r) => r.judge && V1.has(r.taskId) && r.variant === "base");
+const agree = judged.filter((r) => r.judge!.correct.verdict === r.score.success).length;
+const falsePass = judged.filter((r) => r.judge!.correct.verdict && !r.score.success).length;
+console.log(`  judge: agrees on ${agree}/${judged.length}; passed ${falsePass} of ${judged.filter((r) => !r.score.success).length} wrong answers`);
+
+// ── parts 2-4: every harness, both task sets, paired against baseline ─────────
+for (const [name, label] of [
+  ["v1", "Parts 2-3: harness variants (original tasks)"],
+  ["v2", "Part 4: the same harnesses on fresh tasks"],
+] as const) {
+  h(label);
+  const runs = setOf(name);
+  const base = of(runs, "base");
+  console.log(`  ${"baseline".padEnd(16)} ${String(solved(base)).padStart(2)}/${base.length}`);
+  for (const v of VARIANTS) {
+    if (v.id === "base") continue;
+    const rs = of(runs, v.id);
+    if (!rs.length) continue;
+    const f = flips(runs, v.id);
+    console.log(`  ${v.label.padEnd(16)} ${String(solved(rs)).padStart(2)}/${rs.length}   fixed ${String(f.fixed.length).padStart(2)} broken ${String(f.broken.length).padStart(2)}   p ${p(signTest(f.fixed.length, f.broken.length))}`);
+  }
+  // Part 3's headline comparison is between two variants, not against baseline.
+  const chainLast = of(runs, "shots-rev");
+  if (chainLast.length) {
+    const key = (r: ScoredRun) => `${r.modelId}|${r.format}|${r.taskId}`;
+    const short = new Map(of(runs, "shots").map((r) => [key(r), r]));
+    let fixed = 0;
+    let broken = 0;
+    for (const r of chainLast) {
+      const o = short.get(key(r));
+      if (!o) continue;
+      if (!o.score.success && r.score.success) fixed++;
+      if (o.score.success && !r.score.success) broken++;
+    }
+    console.log(`  chain-last vs calc-last: fixed ${fixed} broken ${broken}   p ${p(signTest(fixed, broken))}`);
+  }
+}
+
+// ── the size ladder, both sets ────────────────────────────────────────────────
+h("Does the size ladder replicate? (baseline harness, both formats)");
+for (const m of MODELS) {
+  const cell = (name: "v1" | "v2") => {
+    const rs = of(setOf(name), "base").filter((r) => r.modelId === m.id);
+    return `${String(solved(rs)).padStart(2)}/${rs.length}`;
+  };
+  console.log(`  ${m.label.padEnd(14)} original ${cell("v1")}   fresh ${cell("v2")}`);
+}
+
+// ── per-task, every harness ───────────────────────────────────────────────────
+for (const [name, tasks] of [
+  ["Original tasks", TASKS],
+  ["Fresh tasks", TASKS_V2],
+] as const) {
+  h(`${name}: configurations solving each task, by harness`);
+  const present = VARIANTS.filter((v) => all.runs.some((r) => r.variant === v.id && tasks.some((t) => t.id === r.taskId)));
+  console.log(`  ${"".padEnd(20)}${present.map((v) => v.label.slice(0, 11).padEnd(12)).join("")}`);
+  for (const t of tasks) {
+    const cells = present.map((v) => {
+      const rs = all.runs.filter((r) => r.taskId === t.id && r.variant === v.id);
+      return `${solved(rs)}/${rs.length}`.padEnd(12);
+    });
+    console.log(`  ${t.id.padEnd(20)}${cells.join("")}`);
+  }
+}
+
+// ── claims made in prose that no chart shows ──────────────────────────────────
+h("Trace-level claims quoted in the findings");
+const firstCall = (r: ScoredRun) => r.steps[0]?.call?.tool;
+const count = (rs: ScoredRun[], fn: (r: ScoredRun) => boolean) => rs.filter(fn).length;
+
+const guarded = all.runs.filter((r) => r.steps.some((s) => s.guarded));
+const nextAfterGuard = guarded.map((r) => {
+  const i = r.steps.findIndex((s) => s.guarded);
+  return r.steps[i + 1]?.guarded ? "repeated it" : r.steps[i + 1]?.call?.tool ?? "(none)";
+});
+console.log(`  P2 loop guard fired in ${guarded.length} runs; next step repeated the call in ${nextAfterGuard.filter((x) => x === "repeated it").length}; ${count(guarded, (r) => r.answer === null)} still never answered`);
+
+const tentPrice = all.runs.filter((r) => r.steps.some((s) => s.call?.tool === "calculate" && /(?<!\d)89(?!\d)/.test(String(s.call.args.expression ?? ""))));
+console.log(`  P3 runs multiplying by 89 (the example's tent price): ${count(tentPrice, (r) => V1.has(r.taskId))} on the original tasks, ${tentPrice.length} counting part 4; baseline: ${count(tentPrice, (r) => r.variant === "base")}`);
+
+const productOnly = ["price", "stock", "bulk-total"];
+for (const v of ["base", "three-hop"] as const) {
+  const rs = all.runs.filter((r) => r.variant === v && productOnly.includes(r.taskId) && firstCall(r));
+  console.log(`  P3 first call on product-only tasks (${v}): get_order ${count(rs, (r) => firstCall(r) === "get_order")}, get_product ${count(rs, (r) => firstCall(r) === "get_product")}, of ${rs.length}`);
+}
+
+const direct = all.runs.filter((r) => r.taskId === "b-direct" && r.variant === "base" && firstCall(r));
+console.log(`  P4 "where is TRK-505" first call: get_order ${count(direct, (r) => firstCall(r) === "get_order")}, track_shipment ${count(direct, (r) => firstCall(r) === "track_shipment")}, other ${count(direct, (r) => !["get_order", "track_shipment"].includes(firstCall(r)!))}, of ${direct.length}`);
+
+const byName = all.runs.filter((r) => r.taskId === "b-by-name");
+console.log(`  P4 "did Luis Ortega's order ship": solved ${solved(byName)}/${byName.length}; ${count(byName, (r) => r.steps.some((s) => s.call?.tool === "get_order" && /ortega/i.test(JSON.stringify(s.call.args))))} passed a name to get_order (${count(byName, (r) => r.steps.some((s) => /ortega/i.test(JSON.stringify(s.call?.args ?? {}))))} to any tool); ${count(byName, (r) => r.answer === null)} never answered`);
+
+// The echo flaw: a task whose question names its own answer.
+const still = all.runs.filter((r) => r.taskId === "b-still" && r.score.success);
+const unverified = still.filter((r) => !r.steps.some((s) => s.call?.tool === "track_shipment" && !s.toolError));
+const mean = (rs: ScoredRun[]) => (rs.length ? rs.reduce((a, r) => a + r.score.total, 0) / rs.length : 0);
+console.log(`  P4 "still in Chicago" marked correct: ${still.length}, of which ${unverified.length} never called track_shipment`);
+console.log(`     their mean rubric total ${mean(unverified).toFixed(0)} vs ${mean(still.filter((r) => !unverified.includes(r))).toFixed(0)} for the rest`);
+
+const nobody = [...TASKS, ...TASKS_V2].filter((t) => solved(all.runs.filter((r) => r.taskId === t.id)) === 0);
+console.log(`  Tasks solved by nobody, in any harness: ${nobody.map((t) => `${t.id} (0/${all.runs.filter((r) => r.taskId === t.id).length})`).join(", ") || "none"}`);
+console.log(`  Best single harness ${Math.max(...VARIANTS.map((v) => solved(of(setOf("v1"), v.id))))}/96 vs per-task oracle ${TASKS.reduce((n, t) => n + Math.max(...VARIANTS.map((v) => solved(all.runs.filter((r) => r.taskId === t.id && r.variant === v.id)))), 0)}/96 (original tasks)`);
+console.log(`  (the oracle picks the best harness per task on the same runs it scores, so it is a ceiling, not an estimate)`);
+console.log(`\nTasks referenced above: ${[...TASKS, ...TASKS_V2].length} total; taskById resolves ${taskById("b-still") ? "both sets" : "v1 only"}.`);
