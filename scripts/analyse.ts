@@ -12,10 +12,12 @@ import { VARIANTS, variantLabel } from "../src/lib/variants.ts";
 const file = process.argv[2] ?? "public/results/recorded.json";
 const all = JSON.parse(readFileSync(file, "utf8")) as ExperimentResults;
 for (const r of all.runs) r.variant ??= "base";
+const greedy = all.runs.filter((r) => (r.temperature ?? 0) === 0);
+const sampled = all.runs.filter((r) => (r.temperature ?? 0) > 0);
 
 const V1 = new Set(TASKS.map((t) => t.id));
 const V2 = new Set(TASKS_V2.map((t) => t.id));
-const setOf = (name: "v1" | "v2") => all.runs.filter((r) => (name === "v1" ? V1 : V2).has(r.taskId));
+const setOf = (name: "v1" | "v2") => greedy.filter((r) => (name === "v1" ? V1 : V2).has(r.taskId));
 const solved = (rs: ScoredRun[]) => rs.filter((r) => r.score.success).length;
 const of = (rs: ScoredRun[], v: VariantId) => rs.filter((r) => r.variant === v);
 const h = (s: string) => console.log(`\n── ${s} ${"─".repeat(Math.max(0, 66 - s.length))}`);
@@ -88,11 +90,11 @@ for (const [name, tasks] of [
   ["Fresh tasks", TASKS_V2],
 ] as const) {
   h(`${name}: configurations solving each task, by harness`);
-  const present = VARIANTS.filter((v) => all.runs.some((r) => r.variant === v.id && tasks.some((t) => t.id === r.taskId)));
+  const present = VARIANTS.filter((v) => greedy.some((r) => r.variant === v.id && tasks.some((t) => t.id === r.taskId)));
   console.log(`  ${"".padEnd(20)}${present.map((v) => v.label.slice(0, 11).padEnd(12)).join("")}`);
   for (const t of tasks) {
     const cells = present.map((v) => {
-      const rs = all.runs.filter((r) => r.taskId === t.id && r.variant === v.id);
+      const rs = greedy.filter((r) => r.taskId === t.id && r.variant === v.id);
       return `${solved(rs)}/${rs.length}`.padEnd(12);
     });
     console.log(`  ${t.id.padEnd(20)}${cells.join("")}`);
@@ -104,37 +106,37 @@ h("Trace-level claims quoted in the findings");
 const firstCall = (r: ScoredRun) => r.steps[0]?.call?.tool;
 const count = (rs: ScoredRun[], fn: (r: ScoredRun) => boolean) => rs.filter(fn).length;
 
-const guarded = all.runs.filter((r) => r.steps.some((s) => s.guarded));
+const guarded = greedy.filter((r) => r.steps.some((s) => s.guarded));
 const nextAfterGuard = guarded.map((r) => {
   const i = r.steps.findIndex((s) => s.guarded);
   return r.steps[i + 1]?.guarded ? "repeated it" : r.steps[i + 1]?.call?.tool ?? "(none)";
 });
 console.log(`  P2 loop guard fired in ${guarded.length} runs; next step repeated the call in ${nextAfterGuard.filter((x) => x === "repeated it").length}; ${count(guarded, (r) => r.answer === null)} still never answered`);
 
-const tentPrice = all.runs.filter((r) => r.steps.some((s) => s.call?.tool === "calculate" && /(?<!\d)89(?!\d)/.test(String(s.call.args.expression ?? ""))));
+const tentPrice = greedy.filter((r) => r.steps.some((s) => s.call?.tool === "calculate" && /(?<!\d)89(?!\d)/.test(String(s.call.args.expression ?? ""))));
 console.log(`  P3 runs multiplying by 89 (the example's tent price): ${count(tentPrice, (r) => V1.has(r.taskId))} on the original tasks, ${tentPrice.length} counting part 4; baseline: ${count(tentPrice, (r) => r.variant === "base")}`);
 
 const productOnly = ["price", "stock", "bulk-total"];
 for (const v of ["base", "three-hop"] as const) {
-  const rs = all.runs.filter((r) => r.variant === v && productOnly.includes(r.taskId) && firstCall(r));
+  const rs = greedy.filter((r) => r.variant === v && productOnly.includes(r.taskId) && firstCall(r));
   console.log(`  P3 first call on product-only tasks (${v}): get_order ${count(rs, (r) => firstCall(r) === "get_order")}, get_product ${count(rs, (r) => firstCall(r) === "get_product")}, of ${rs.length}`);
 }
 
-const direct = all.runs.filter((r) => r.taskId === "b-direct" && r.variant === "base" && firstCall(r));
+const direct = greedy.filter((r) => r.taskId === "b-direct" && r.variant === "base" && firstCall(r));
 console.log(`  P4 "where is TRK-505" first call: get_order ${count(direct, (r) => firstCall(r) === "get_order")}, track_shipment ${count(direct, (r) => firstCall(r) === "track_shipment")}, other ${count(direct, (r) => !["get_order", "track_shipment"].includes(firstCall(r)!))}, of ${direct.length}`);
 
-const byName = all.runs.filter((r) => r.taskId === "b-by-name");
+const byName = greedy.filter((r) => r.taskId === "b-by-name");
 console.log(`  P4 "did Luis Ortega's order ship": solved ${solved(byName)}/${byName.length}; ${count(byName, (r) => r.steps.some((s) => s.call?.tool === "get_order" && /ortega/i.test(JSON.stringify(s.call.args))))} passed a name to get_order (${count(byName, (r) => r.steps.some((s) => /ortega/i.test(JSON.stringify(s.call?.args ?? {}))))} to any tool); ${count(byName, (r) => r.answer === null)} never answered`);
 
 // The echo flaw: a task whose question names its own answer.
-const still = all.runs.filter((r) => r.taskId === "b-still" && r.score.success);
+const still = greedy.filter((r) => r.taskId === "b-still" && r.score.success);
 const unverified = still.filter((r) => !r.steps.some((s) => s.call?.tool === "track_shipment" && !s.toolError));
 const mean = (rs: ScoredRun[]) => (rs.length ? rs.reduce((a, r) => a + r.score.total, 0) / rs.length : 0);
 console.log(`  P4 "still in Chicago" marked correct: ${still.length}, of which ${unverified.length} never called track_shipment`);
 console.log(`     their mean rubric total ${mean(unverified).toFixed(0)} vs ${mean(still.filter((r) => !unverified.includes(r))).toFixed(0)} for the rest`);
 
-const nobody = [...TASKS, ...TASKS_V2].filter((t) => solved(all.runs.filter((r) => r.taskId === t.id)) === 0);
-console.log(`  Tasks solved by nobody, in any harness: ${nobody.map((t) => `${t.id} (0/${all.runs.filter((r) => r.taskId === t.id).length})`).join(", ") || "none"}`);
-console.log(`  Best single harness ${Math.max(...VARIANTS.map((v) => solved(of(setOf("v1"), v.id))))}/96 vs per-task oracle ${TASKS.reduce((n, t) => n + Math.max(...VARIANTS.map((v) => solved(all.runs.filter((r) => r.taskId === t.id && r.variant === v.id)))), 0)}/96 (original tasks)`);
+const nobody = [...TASKS, ...TASKS_V2].filter((t) => solved(greedy.filter((r) => r.taskId === t.id)) === 0);
+console.log(`  Tasks solved by nobody, in any harness: ${nobody.map((t) => `${t.id} (0/${greedy.filter((r) => r.taskId === t.id).length})`).join(", ") || "none"}`);
+console.log(`  Best single harness ${Math.max(...VARIANTS.map((v) => solved(of(setOf("v1"), v.id))))}/96 vs per-task oracle ${TASKS.reduce((n, t) => n + Math.max(...VARIANTS.map((v) => solved(greedy.filter((r) => r.taskId === t.id && r.variant === v.id)))), 0)}/96 (original tasks)`);
 console.log(`  (the oracle picks the best harness per task on the same runs it scores, so it is a ceiling, not an estimate)`);
 console.log(`\nTasks referenced above: ${[...TASKS, ...TASKS_V2].length} total; taskById resolves ${taskById("b-still") ? "both sets" : "v1 only"}.`);

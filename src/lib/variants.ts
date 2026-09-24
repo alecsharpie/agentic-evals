@@ -50,5 +50,16 @@ export const PREDICTIONS_V2: { variant: VariantId; claim: string }[] = [
   { variant: "base", claim: "“Did Luis Ortega's order ship?”, which no tool can answer, is solved by at most 1 of 8 baseline configurations." },
 ];
 
+/**
+ * Part 5 predictions, committed before the sampled sweep ran. Parts 1-4 are all greedy,
+ * a single decoding per cell; this asks how much the conclusions depend on that choice.
+ */
+export const PREDICTIONS_VAR: { claim: string }[] = [
+  { claim: "Sampling at temperature 0.7 scores lower than greedy overall: greedy is a strong decoder for tasks whose answers are short and structured." },
+  { claim: "The spread across five samples is wide enough to swallow part 3's smaller effects: at least one configuration varies by 3 or more tasks out of 12 between its best and worst sample." },
+  { claim: "Task outcomes are bimodal. At least two thirds of model-format-task cells are solved either 0 or 5 times out of 5, rather than landing in between." },
+  { claim: "The two tasks never solved greedily under the baseline harness, the unit price and the order total, stay unsolved under sampling too: those failures are systematic, not unlucky." },
+];
+
 export const variantById = (id: VariantId) => VARIANTS.find((v) => v.id === id)!;
 export const variantLabel = (id: VariantId) => variantById(id).label;

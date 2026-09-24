@@ -35,7 +35,10 @@ export interface ExperimentCallbacks {
   signal: AbortSignal;
 }
 
-export const runKey = (r: Pick<AgentRun, "modelId" | "format" | "variant" | "taskId" | "trial">) => `${r.modelId}|${r.format}|${r.variant}|${r.taskId}|${r.trial}`;
+// Temperature is part of the identity: one results file can hold a greedy run and a
+// sampled sweep of the same cells without them colliding.
+export const runKey = (r: Pick<AgentRun, "modelId" | "format" | "variant" | "taskId" | "trial" | "temperature">) =>
+  `${r.modelId}|${r.format}|${r.variant}|${r.taskId}|${r.trial}@${r.temperature}`;
 
 /** Every (variant, format) arm the config asks for. Variants that live in the JSON grammar have no free-text arm. */
 export function arms(config: Pick<ExperimentConfig, "formats" | "variants">) {
@@ -45,7 +48,7 @@ export function arms(config: Pick<ExperimentConfig, "formats" | "variants">) {
 /** The key of every run the config asks for. */
 export function plannedKeys(config: ExperimentConfig): string[] {
   return config.modelIds.flatMap((modelId) =>
-    arms(config).flatMap((arm) => TASK_SETS[config.taskSet].flatMap((task) => Array.from({ length: config.trials }, (_, trial) => runKey({ modelId, ...arm, taskId: task.id, trial })))),
+    arms(config).flatMap((arm) => TASK_SETS[config.taskSet].flatMap((task) => Array.from({ length: config.trials }, (_, trial) => runKey({ modelId, ...arm, taskId: task.id, trial, temperature: config.temperature })))),
   );
 }
 
@@ -86,7 +89,7 @@ export async function runExperiment(llm: WebLLM, config: ExperimentConfig, resul
   for (const modelId of config.modelIds) {
     const pending = arms(config)
       .flatMap(({ variant, format }) => TASK_SETS[config.taskSet].flatMap((task) => Array.from({ length: config.trials }, (_, trial) => ({ variant, format, task, trial }))))
-      .filter(({ variant, format, task, trial }) => !have.has(runKey({ modelId, format, variant, taskId: task.id, trial })));
+      .filter(({ variant, format, task, trial }) => !have.has(runKey({ modelId, format, variant, taskId: task.id, trial, temperature: config.temperature })));
     if (pending.length === 0) continue;
 
     await llm.load(modelId, (p) =>

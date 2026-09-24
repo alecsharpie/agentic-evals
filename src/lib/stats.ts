@@ -130,7 +130,7 @@ export interface Flips {
 }
 
 export function flips(runs: ScoredRun[], variant: VariantId, filter: (r: ScoredRun) => boolean = () => true): Flips {
-  const key = (r: ScoredRun) => `${r.modelId}|${r.format}|${r.taskId}|${r.trial}`;
+  const key = (r: ScoredRun) => `${r.modelId}|${r.format}|${r.taskId}|${r.trial}@${r.temperature ?? 0}`;
   const base = new Map(runs.filter((r) => (r.variant ?? "base") === "base").map((r) => [key(r), r]));
   const out: Flips = { pairs: 0, fixed: [], broken: [], baseSuccesses: 0, variantSuccesses: 0 };
   for (const r of runs) {

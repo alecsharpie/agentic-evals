@@ -5,9 +5,11 @@ import { TASKS_V2 } from "../lib/tasks.ts";
 import { taskSubset } from "../lib/stats.ts";
 import { FlipsFigure, InterventionGrid, PART2, PART3, PrematureFigure, TaskByVariant, VariantMatrix, VariantOutcomes, hasPart } from "./Part2.tsx";
 import { TASKS } from "../lib/tasks.ts";
-import { CriteriaFigure, Headline, JudgeFigure, OutcomeFigure, SpeedFigure, SuccessFigure, TaskMatrix, TierFigure, baselineOnly, useStats } from "./ResultsViz.tsx";
+import { CriteriaFigure, Headline, JudgeFigure, OutcomeFigure, SpeedFigure, SuccessFigure, TaskMatrix, TierFigure, atTemperature, baselineOnly, useStats } from "./ResultsViz.tsx";
 
-export function AllFigures({ results: all }: { results: ExperimentResults }) {
+export function AllFigures({ results: raw }: { results: ExperimentResults }) {
+  // Parts 1-4 are greedy; a sampled sweep in the same file is drawn separately.
+  const all = atTemperature(raw, 0);
   const results = taskSubset(all, TASKS);
   const fresh = taskSubset(all, TASKS_V2);
   const base = baselineOnly(results);

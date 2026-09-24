@@ -26,6 +26,9 @@ export const useStats = (results: ExperimentResults, variant: VariantId = "base"
 /** Part 1 is the baseline harness only; part 2 runs live in the same file under other variants. */
 export const baselineOnly = (results: ExperimentResults): ExperimentResults => ({ ...results, runs: results.runs.filter((r) => (r.variant ?? "base") === "base") });
 
+/** Parts 1-4 are all greedy. A sampled sweep lives in the same file and must not leak into them. */
+export const atTemperature = (results: ExperimentResults, t: number): ExperimentResults => ({ ...results, runs: results.runs.filter((r) => (r.temperature ?? 0) === t) });
+
 function byModel(stats: ConfigStats[], bar: (s: ConfigStats) => BarRow["bars"][number]): BarRow[] {
   return MODELS.filter((m) => stats.some((s) => s.modelId === m.id)).map((m) => ({
     key: m.id,

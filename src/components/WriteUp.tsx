@@ -14,7 +14,7 @@ import { LadderFigure, PredictionsV2, ReplicationFigure, hasPart4 } from "./Part
 import { taskSubset } from "../lib/stats.ts";
 import { TASKS_V2 } from "../lib/tasks.ts";
 import { FlipsFigure, InterventionGrid, PART2, PART3, PrematureFigure, TaskByVariant, VariantMatrix, VariantOutcomes, hasPart } from "./Part2.tsx";
-import { CriteriaFigure, Headline, JudgeFigure, OutcomeFigure, SpeedFigure, SuccessFigure, TaskMatrix, TierFigure, baselineOnly, useStats } from "./ResultsViz.tsx";
+import { CriteriaFigure, Headline, JudgeFigure, OutcomeFigure, SpeedFigure, SuccessFigure, TaskMatrix, TierFigure, atTemperature, baselineOnly, useStats } from "./ResultsViz.tsx";
 
 const H2 = ({ n, children }: { n: number; children: React.ReactNode }) => (
   <h2>
@@ -85,7 +85,9 @@ function Rubric() {
   );
 }
 
-export function WriteUp({ results: all, goTo }: { results: ExperimentResults | null; goTo: (tab: "live" | "experiment") => void }) {
+export function WriteUp({ results: raw, goTo }: { results: ExperimentResults | null; goTo: (tab: "live" | "experiment") => void }) {
+  // Parts 1-4 report greedy decoding only; the sampled sweep is part 5.
+  const all = useMemo(() => (raw ? atTemperature(raw, 0) : null), [raw]);
   // Parts 1 and 2 share one results file. Part 1 reads only the baseline harness.
   const results = useMemo(() => (all ? baselineOnly(taskSubset(all, TASKS)) : null), [all]);
   const part2 = all !== null && hasPart(all, 2);

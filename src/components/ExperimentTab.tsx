@@ -37,8 +37,9 @@ export function ExperimentTab({ recorded, onRecorded }: { recorded: ExperimentRe
   const config: ExperimentConfig = { modelIds: MODELS.map((m) => m.id).filter((id) => modelIds.includes(id)), formats, variants, taskSet, trials, temperature, judgeModelId };
   const planned = plannedKeys(config);
   const total = planned.length;
-  // Greedy runs are deterministic, so anything the recorded run already has need not be repeated.
-  const reusable = extend && recorded && recorded.meta.temperature === temperature ? recorded : null;
+  // Anything the recorded run already has need not be repeated. The key includes
+  // temperature, so a sampled sweep never reuses a greedy run of the same cell.
+  const reusable = extend && recorded ? recorded : null;
   const have = new Set(reusable?.runs.map(runKey));
   const toRun = planned.filter((k) => !have.has(k)).length;
   // An interrupted judging pass leaves agent runs complete but answers ungraded;
